@@ -12,6 +12,48 @@ from typing import List, Dict, Any
 
 # ── Step 4: Clean ────────────────────────────────────────────────────────────
 
+def assign_salary_tier(salary, composite_score):
+    if pd.isna(salary) or salary is None:
+        return None
+
+    # Performance-aware overrides so elite/strong players are grouped with peers
+    # closer to their impact, not just their contract value.
+    if composite_score is not None and not pd.isna(composite_score):
+        if composite_score >= 70:
+            return "Star" if salary < 25_000_000 else "Max"
+        if composite_score >= 50:
+            if salary < 15_000_000:
+                return "Starter"
+            elif salary < 25_000_000:
+                return "Star"
+            else:
+                return "Max"
+
+    # Original salary-only fallback logic
+    if salary < 5_000_000:
+        return "Minimum"
+    elif salary < 15_000_000:
+        return "Role Player"
+    elif salary < 25_000_000:
+        return "Starter"
+    elif salary < 35_000_000:
+        return "Star"
+    else:
+        return "Max"
+
+
+def assign_salary_tiers(df: pd.DataFrame) -> pd.DataFrame:
+    print("\nAssigning salary tiers (salary + performance)...")
+    df["salary_tier"] = df.apply(
+        lambda row: assign_salary_tier(row.get("salary"), row.get("composite_score")),
+        axis=1,
+    )
+    before = len(df)
+    df = df[df["salary_tier"].notna()]
+    print(f"  → Removed {before - len(df)} players with no salary tier")
+    print("  ✓ Salary tiers assigned")
+    return df
+
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     print("\nCleaning data...")
 
@@ -43,23 +85,6 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
     df["height_group"] = df["height_inches"].apply(assign_height_group)
 
-    # Salary tier
-    def assign_salary_tier(salary):
-        if pd.isna(salary) or salary is None:
-            return None
-        if salary < 5_000_000:
-            return "Minimum"
-        elif salary < 15_000_000:
-            return "Role Player"
-        elif salary < 25_000_000:
-            return "Starter"
-        elif salary < 35_000_000:
-            return "Star"
-        else:
-            return "Max"
-
-    df["salary_tier"] = df["salary"].apply(assign_salary_tier)
-
     before = len(df)
     df = df[df["games_played"] >= 20]
     print(f"  → Removed {before - len(df)} players with <20 games")
@@ -71,10 +96,6 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     before = len(df)
     df = df[df["height_group"] != "Unknown"]
     print(f"  → Removed {before - len(df)} players with no height data")
-
-    before = len(df)
-    df = df[df["salary_tier"].notna()]
-    print(f"  → Removed {before - len(df)} players with no salary tier")
 
     print(f"  ✓ {len(df)} players remain after cleaning")
     return df.reset_index(drop=True)
@@ -241,6 +262,10 @@ def run_pipeline(df) -> List[Dict[str, Any]]:
         return []
     df = normalize_stats(df)
     df = calculate_scores(df)
+    df = assign_salary_tiers(df)
+    if df.empty:
+        print("\n✗ No players left after salary tier assignment.")
+        return []
     df = calculate_peer_rankings(df)
     df = assign_verdicts(df)
     return generate_output(df)
