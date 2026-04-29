@@ -254,7 +254,10 @@
 </main>
 
 <script>
-  const API = 'http://localhost:8000';
+  // Use same-origin so this works locally and when deployed (Render, etc.)
+  // If you ever host the frontend separately, set `window.COURTVALUE_API_BASE`
+  // before this script runs.
+  const API = (window.COURTVALUE_API_BASE || window.location.origin).replace(/\/$/, '');
   let allPlayers = [];
   let sortCol = 'vpd';
   let sortDir = -1; // -1 = desc
