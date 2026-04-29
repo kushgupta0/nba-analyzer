@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -10,18 +11,51 @@ from nba_api.stats.endpoints import (
 )
 
 
-# ── Salary scrape ────────────────────────────────────────────────────────────
+# ── Salary sources ───────────────────────────────────────────────────────────
 
-def fetch_salary_data(season: int = 2024) -> Dict[str, float]:
+BASE_DIR = Path(__file__).resolve().parent
+SALARY_CSV = BASE_DIR / "salaries_2026.csv"
+
+
+def load_salary_data_from_csv(csv_path: Path = SALARY_CSV) -> Dict[str, float]:
+    """
+    Load salary data from a local CSV.
+    Expected columns: player_name,salary
+    Returns a dict keyed by lowercase player name -> annual salary (USD).
+    """
+    salary_map: Dict[str, float] = {}
+
+    if not csv_path.exists():
+        return salary_map
+
+    try:
+        salary_df = pd.read_csv(csv_path)
+        required = {"player_name", "salary"}
+        if not required.issubset(salary_df.columns):
+            print(f"    ! Salary CSV missing required columns: {sorted(required)}")
+            return salary_map
+
+        salary_df = salary_df.dropna(subset=["player_name", "salary"]).copy()
+        salary_df["player_name"] = salary_df["player_name"].astype(str).str.strip()
+        salary_df["salary"] = pd.to_numeric(salary_df["salary"], errors="coerce")
+        salary_df = salary_df.dropna(subset=["salary"])
+
+        salary_map = {
+            row["player_name"].lower(): float(row["salary"])
+            for _, row in salary_df.iterrows()
+            if row["player_name"]
+        }
+        print(f"    ✓ Loaded {len(salary_map)} salaries from {csv_path.name}")
+    except Exception as e:
+        print(f"    ✗ Salary CSV load failed: {e}")
+
+    return salary_map
+
+
+def fetch_salary_data_from_hoopshype(season: int = 2024) -> Dict[str, float]:
     """
     Scrape current-season salary data from HoopsHype.
     Returns a dict keyed by lowercase player name → annual salary (USD).
-
-    TODO: swap this for your sports data API key when you have it.
-    Example replacement:
-        API_KEY = os.getenv("SPORTS_API_KEY")
-        resp = requests.get("https://api.example.com/salaries", headers={"x-api-key": API_KEY})
-        return {p["name"].lower(): p["salary"] for p in resp.json()}
     """
     url = "https://hoopshype.com/salaries/players/"
     headers = {"User-Agent": "Mozilla/5.0 (compatible; nba-analyzer/1.0)"}
@@ -144,8 +178,11 @@ def fetch_player_data(season: int = 2024) -> Optional[pd.DataFrame]:
         print(f"    ✓ {len(bio)} players (bio)")
 
     # Salary
-    print("  → Salary data from HoopsHype...")
-    salary_map = fetch_salary_data(season=season)
+    print("  → Salary data from CSV...")
+    salary_map = load_salary_data_from_csv()
+    if not salary_map:
+        print("  → Salary CSV unavailable; falling back to HoopsHype...")
+        salary_map = fetch_salary_data_from_hoopshype(season=season)
     print(f"    ✓ {len(salary_map)} salaries fetched")
 
     # ── Merge ────────────────────────────────────────────────────────────────
