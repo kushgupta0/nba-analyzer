@@ -181,19 +181,35 @@ def calculate_peer_rankings(df: pd.DataFrame) -> pd.DataFrame:
 def assign_verdicts(df: pd.DataFrame) -> pd.DataFrame:
     print("\nAssigning verdicts...")
 
-    def get_verdict(row):
+    def get_verdict_and_explanation(row):
         peers = df[
             (df["height_group"] == row["height_group"]) &
             (df["salary_tier"]  == row["salary_tier"])
         ]
-        percentile = row["peer_rank"] / len(peers)
-        if percentile <= 0.30:
-            return "UNDERPAID"
-        elif percentile >= 0.70:
-            return "OVERPAID"
-        return "FAIR"
+        peer_count = len(peers)
+        percentile = row["peer_rank"] / peer_count
 
-    df["verdict"] = df.apply(get_verdict, axis=1)
+        base = (
+            f"Rank {int(row['peer_rank'])} of {peer_count} in "
+            f"{row['height_group']} / {row['salary_tier']} tier peers."
+        )
+
+        if percentile <= 0.30:
+            return pd.Series([
+                "UNDERPAID",
+                f"{base} Top value in this peer group, so contract projects as UNDERPAID.",
+            ])
+        elif percentile >= 0.70:
+            return pd.Series([
+                "OVERPAID",
+                f"{base} Lower value-per-dollar versus comparable peers, so marked OVERPAID.",
+            ])
+        return pd.Series([
+            "FAIR",
+            f"{base} Mid-pack value-per-dollar versus comparable peers, so marked FAIR.",
+        ])
+
+    df[["verdict", "verdict_explanation"]] = df.apply(get_verdict_and_explanation, axis=1)
 
     counts = df["verdict"].value_counts()
     print(f"  ✓ Verdicts assigned")
@@ -224,6 +240,7 @@ COL_MAP = {
     "value_per_dollar":"vpd",
     "peer_rank":       "peer_rank",
     "verdict":         "verdict",
+    "verdict_explanation": "verdict_explanation",
 }
 
 

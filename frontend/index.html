@@ -271,6 +271,16 @@
     .stat-block { }
     .stat-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
     .stat-val   { font-size: 1.1rem; font-weight: 600; margin-top: 2px; }
+    .verdict-note {
+      margin: 0 1.5rem 0.75rem;
+      padding: 0.65rem 0.8rem;
+      border-radius: 10px;
+      border: 1px solid rgba(51,65,85,0.7);
+      background: rgba(15,23,42,0.35);
+      color: #cbd5e1;
+      font-size: 0.78rem;
+      line-height: 1.35;
+    }
 
     /* ── Loading / error ── */
     #status {
@@ -465,7 +475,9 @@
         ${statBlock('Win Shares', (p.ows||0)+(p.dws||0) > 0 ? ((p.ows||0)+(p.dws||0)).toFixed(1) : '—')}
         ${statBlock('Height', p.height||'—')}
         ${statBlock('Composite', p.score)}
-      </div><p style="font-size:0.7rem;color:#64748b;padding:0 1.5rem 0.75rem">
+      </div>
+      <div class="verdict-note">${esc(p.verdict_explanation || 'No explanation available.')}</div>
+      <p style="font-size:0.7rem;color:#64748b;padding:0 1.5rem 0.75rem">
         * Estimated metrics from NBA.com (proxy for VORP/BPM — will upgrade with API key)
       </p></td>`;
 
