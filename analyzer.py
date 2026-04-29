@@ -113,19 +113,13 @@ def _minmax(series: pd.Series) -> pd.Series:
 def normalize_stats(df: pd.DataFrame) -> pd.DataFrame:
     print("\nNormalizing stats to 0-100 scale...")
 
-    for stat in ["vorp", "obpm", "dbpm", "ts_pct", "off_win_shares", "def_win_shares"]:
+    for stat in ["per", "off_win_shares", "def_win_shares", "ts_pct"]:
         if stat in df.columns:
             df[f"{stat}_norm"] = _minmax(df[stat].fillna(0))
         else:
             df[f"{stat}_norm"] = 50.0
 
     df["availability_norm"] = (df["games_played"] / 82) * 100
-
-    # TOV% inverted — lower is better
-    if "tov_pct" in df.columns:
-        df["tov_inv_norm"] = 100 - _minmax(df["tov_pct"].fillna(df["tov_pct"].mean()))
-    else:
-        df["tov_inv_norm"] = 50.0
 
     print("  ✓ All stats normalized")
     return df
@@ -134,12 +128,11 @@ def normalize_stats(df: pd.DataFrame) -> pd.DataFrame:
 # ── Step 6: Composite score ──────────────────────────────────────────────────
 
 WEIGHTS = {
-    "vorp_norm":         0.30,
-    "dbpm_norm":         0.20,
-    "obpm_norm":         0.15,
+    "per_norm":          0.25,
+    "off_win_shares_norm": 0.25,
+    "def_win_shares_norm": 0.25,
     "ts_pct_norm":       0.15,
-    "availability_norm": 0.12,
-    "tov_inv_norm":      0.08,
+    "availability_norm": 0.10,
 }
 
 
@@ -229,9 +222,7 @@ COL_MAP = {
     "salary_millions": "salary",
     "salary_tier":     "tier",
     "games_played":    "games",
-    "vorp":            "vorp",
-    "obpm":            "obpm",
-    "dbpm":            "dbpm",
+    "per":             "per",
     "off_win_shares":  "ows",
     "def_win_shares":  "dws",
     "ts_pct":          "ts",

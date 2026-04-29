@@ -466,9 +466,9 @@
       detail.className = 'detail-row';
       detail.style.display = 'none';
       detail.innerHTML = `<td colspan="9"><div class="detail-inner">
-        ${statBlock('VORP*', p.vorp)}
-        ${statBlock('OBPM*', p.obpm)}
-        ${statBlock('DBPM*', p.dbpm)}
+        ${statBlock('PER', p.per != null ? (+p.per).toFixed(1) : '—')}
+        ${statBlock('OWS', p.ows != null ? (+p.ows).toFixed(2) : '—')}
+        ${statBlock('DWS', p.dws != null ? (+p.dws).toFixed(2) : '—')}
         ${statBlock('TS%', p.ts != null ? (p.ts*100).toFixed(1)+'%' : '—')}
         ${statBlock('TOV%', p.tov != null ? (p.tov).toFixed(1)+'%' : '—')}
         ${statBlock('Games', p.games)}
@@ -478,7 +478,7 @@
       </div>
       <div class="verdict-note">${esc(p.verdict_explanation || 'No explanation available.')}</div>
       <p style="font-size:0.7rem;color:#64748b;padding:0 1.5rem 0.75rem">
-        * Estimated metrics from NBA.com (proxy for VORP/BPM — will upgrade with API key)
+        * Composite uses PER, OWS, DWS, TS%, and availability.
       </p></td>`;
 
       tr.addEventListener('click', () => {

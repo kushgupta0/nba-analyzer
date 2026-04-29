@@ -1,13 +1,14 @@
 import time
 from pathlib import Path
+import re
+import unicodedata
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 import pandas as pd
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from nba_api.stats.endpoints import (
     leaguedashplayerstats,
     leaguedashplayerbiostats,
-    playerestimatedmetrics,
 )
 
 
@@ -118,17 +119,108 @@ def fetch_salary_data_from_hoopshype(season: int = 2024) -> Dict[str, float]:
     return salary_map
 
 
-def _match_salary(name: str, salary_map: Dict[str, float]) -> Optional[float]:
-    key = name.lower().strip()
-    if key in salary_map:
-        return salary_map[key]
-    # try "Firstname Lastname" → "Lastname Firstname"
-    parts = key.split()
+def _normalize_name(name: str) -> str:
+    if not name:
+        return ""
+    name = unicodedata.normalize("NFKD", str(name))
+    name = "".join(c for c in name if not unicodedata.combining(c))
+    name = name.lower().strip()
+    name = name.replace("’", "'").replace(".", "")
+    name = re.sub(r"\b(jr|sr|ii|iii|iv|v)\b", "", name).strip()
+    name = re.sub(r"[^a-z'\s-]", " ", name)
+    name = re.sub(r"\s+", " ", name).strip()
+    return name
+
+
+def _name_candidates(name: str) -> List[str]:
+    base = _normalize_name(name)
+    if not base:
+        return []
+    out = {base}
+    parts = base.split()
     if len(parts) == 2:
-        alt = f"{parts[1]} {parts[0]}"
-        if alt in salary_map:
-            return salary_map[alt]
+        out.add(f"{parts[1]} {parts[0]}")
+    return [c for c in out if c]
+
+
+def _match_by_name(name: str, value_map: Dict[str, float]) -> Optional[float]:
+    for key in _name_candidates(name):
+        if key in value_map:
+            return value_map[key]
     return None
+
+
+def _match_salary(name: str, salary_map: Dict[str, float]) -> Optional[float]:
+    return _match_by_name(name, salary_map)
+
+
+def fetch_win_shares_data(season: int = 2024) -> Dict[str, Dict[str, float]]:
+    """
+    Scrape Basketball-Reference advanced table for PER, OWS, and DWS.
+    Returns: {normalized_player_name: {"per": x, "ows": y, "dws": z}}
+    """
+    url = f"https://www.basketball-reference.com/leagues/NBA_{season}_advanced.html"
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; nba-analyzer/1.0)"}
+    ws_map: Dict[str, Dict[str, float]] = {}
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=20)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        table = soup.select_one("table#advanced, table#advanced_stats")
+        if table is None:
+            # Basketball-Reference often nests full tables inside HTML comments.
+            for node in soup.find_all(string=lambda t: isinstance(t, Comment)):
+                if "advanced_stats" not in node and 'id="advanced"' not in node:
+                    continue
+                comment_soup = BeautifulSoup(str(node), "html.parser")
+                table = comment_soup.select_one("table#advanced, table#advanced_stats")
+                if table is not None:
+                    break
+        if table is None:
+            print("    ✗ Basketball-Reference advanced table not found")
+            return ws_map
+
+        for row in table.select("tbody tr"):
+            if "thead" in (row.get("class") or []):
+                continue
+            player_tag = row.select_one('td[data-stat="player"], td[data-stat="name_display"]')
+            if not player_tag:
+                continue
+            player = player_tag.get_text(strip=True)
+            key = _normalize_name(player)
+            if not key:
+                continue
+
+            team = row.select_one('td[data-stat="team_id"], td[data-stat="team_name_abbr"]')
+            team_id = team.get_text(strip=True) if team else ""
+
+            def parse_stat(stat_name: str) -> Optional[float]:
+                cell = row.select_one(f'td[data-stat="{stat_name}"]')
+                if not cell:
+                    return None
+                raw = cell.get_text(strip=True)
+                if raw == "":
+                    return None
+                try:
+                    return float(raw)
+                except ValueError:
+                    return None
+
+            per = parse_stat("per")
+            ows = parse_stat("ows")
+            dws = parse_stat("dws")
+            if per is None or ows is None or dws is None:
+                continue
+
+            # Prefer the TOTAL row for traded players.
+            if key not in ws_map or team_id == "TOT":
+                ws_map[key] = {"per": per, "ows": ows, "dws": dws}
+
+    except Exception as e:
+        print(f"    ✗ Basketball-Reference scrape failed: {e}")
+
+    return ws_map
 
 
 # ── NBA.com stat pulls ────────────────────────────────────────────────────────
@@ -154,7 +246,7 @@ def fetch_player_data(season: int = 2024) -> Optional[pd.DataFrame]:
         return None
     print(f"    ✓ {len(base)} players (base)")
 
-    # Advanced stats: TS%, USG%, TOV%, on-court ratings
+    # Advanced stats: TS%, PER/PIE, usage/turnovers
     print("  → Advanced stats from NBA.com...")
     adv = _pull(leaguedashplayerstats.LeagueDashPlayerStats, season_str,
                 per_mode_detailed="PerGame",
@@ -163,19 +255,16 @@ def fetch_player_data(season: int = 2024) -> Optional[pd.DataFrame]:
         return None
     print(f"    ✓ {len(adv)} players (advanced)")
 
-    # Estimated metrics — best available proxy for BPM / VORP on NBA.com
-    print("  → Estimated +/- metrics (BPM proxy)...")
-    est = _pull(playerestimatedmetrics.PlayerEstimatedMetrics, season_str)
-    if est is not None:
-        print(f"    ✓ {len(est)} players (estimated metrics)")
-    else:
-        print("    ! Estimated metrics unavailable — using on-court ratings as fallback")
-
     # Bio stats — height
     print("  → Bio stats (height)...")
     bio = _pull(leaguedashplayerbiostats.LeagueDashPlayerBioStats, season_str)
     if bio is not None:
         print(f"    ✓ {len(bio)} players (bio)")
+
+    # Basketball-Reference advanced totals
+    print("  → Basketball-Reference advanced metrics (PER, OWS, DWS)...")
+    ws_map = fetch_win_shares_data(season=season)
+    print(f"    ✓ {len(ws_map)} players with BBRef advanced metrics")
 
     # Salary
     print("  → Salary data from CSV...")
@@ -192,37 +281,23 @@ def fetch_player_data(season: int = 2024) -> Optional[pd.DataFrame]:
                         "TEAM_ABBREVIATION": "team"}, inplace=True)
 
     # Advanced columns we care about
-    adv_want = {
-        "PLAYER_ID": "PLAYER_ID",
+    adv_cols = ["PLAYER_ID", "TS_PCT", "USG_PCT", "TM_TOV_PCT"]
+    adv_sub = adv[[c for c in adv_cols if c in adv.columns]].copy()
+    adv_sub.rename(columns={
         "TS_PCT": "ts_pct",
         "USG_PCT": "usage_pct",
         "TM_TOV_PCT": "tov_pct",
-        "OFF_RATING": "off_rating",
-        "DEF_RATING": "def_rating",
-    }
-    adv_sub = adv[[c for c in adv_want if c in adv.columns]].rename(columns=adv_want)
-    df = df.merge(adv_sub, on="PLAYER_ID", how="left")
+    }, inplace=True)
 
-    # Estimated metrics (preferred for BPM / VORP proxies)
-    if est is not None:
-        est_want = {
-            "PLAYER_ID": "PLAYER_ID",
-            "E_PLUS_MINUS": "vorp",   # closest free proxy to VORP
-            "E_OFF_RATING": "obpm",   # proxy for OBPM
-            "E_DEF_RATING": "dbpm",   # proxy for DBPM
-        }
-        est_sub = est[[c for c in est_want if c in est.columns]].rename(columns=est_want)
-        df = df.merge(est_sub, on="PLAYER_ID", how="left")
+    # NBA.com does not always expose classic PER directly. Prefer it when present,
+    # otherwise use PIE as the closest free proxy and label it as `per`.
+    if "PLAYER_EFFICIENCY_RATING" in adv.columns:
+        adv_sub["per"] = pd.to_numeric(adv["PLAYER_EFFICIENCY_RATING"], errors="coerce")
+    elif "PIE" in adv.columns:
+        adv_sub["per"] = pd.to_numeric(adv["PIE"], errors="coerce")
     else:
-        # Fall back to on-court ratings from advanced pull
-        df["vorp"] = df.get("off_rating", pd.Series(0, index=df.index)).fillna(0) + \
-                     df.get("def_rating", pd.Series(0, index=df.index)).fillna(0)
-        df["obpm"] = df.get("off_rating", pd.Series(0, index=df.index)).fillna(0)
-        df["dbpm"] = df.get("def_rating", pd.Series(0, index=df.index)).fillna(0)
-
-    # Win-shares are BBRef-only — set to 0 until API key provides them
-    df["off_win_shares"] = 0.0
-    df["def_win_shares"] = 0.0
+        adv_sub["per"] = 15.0
+    df = df.merge(adv_sub, on="PLAYER_ID", how="left")
 
     # Height
     if bio is not None:
@@ -242,5 +317,20 @@ def fetch_player_data(season: int = 2024) -> Optional[pd.DataFrame]:
 
     # Salary
     df["salary"] = df["name"].apply(lambda n: _match_salary(n, salary_map))
+
+    # BBRef advanced stats merge by player name
+    df["per"] = pd.to_numeric(df["per"], errors="coerce")
+    ows_map = {k: v["ows"] for k, v in ws_map.items()}
+    dws_map = {k: v["dws"] for k, v in ws_map.items()}
+    bbref_per_map = {k: v["per"] for k, v in ws_map.items()}
+
+    df["off_win_shares"] = df["name"].apply(lambda n: _match_by_name(n, ows_map))
+    df["def_win_shares"] = df["name"].apply(lambda n: _match_by_name(n, dws_map))
+
+    # If NBA PER is unavailable, backfill from BBRef PER.
+    df["per"] = df["per"].fillna(df["name"].apply(lambda n: _match_by_name(n, bbref_per_map)))
+    df["per"] = df["per"].fillna(15.0)
+    df["off_win_shares"] = pd.to_numeric(df["off_win_shares"], errors="coerce").fillna(0.0)
+    df["def_win_shares"] = pd.to_numeric(df["def_win_shares"], errors="coerce").fillna(0.0)
 
     return df
