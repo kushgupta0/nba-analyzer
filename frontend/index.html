@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CourtValue — NBA Contract Analyzer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f172a;
+      --surface:   #1e293b;
+      --border:    #334155;
+      --text:      #f1f5f9;
+      --muted:     #94a3b8;
+      --accent:    #3b82f6;
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --gray:      #64748b;
+    }
+
+    body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100vh; }
+
+    /* ── Nav ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+    }
+    .logo { font-size: 1.3rem; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+    nav a { color: var(--muted); text-decoration: none; margin-left: 1.5rem; font-size: 0.9rem; }
+    nav a:hover, nav a.active { color: var(--text); }
+
+    /* ── Main ── */
+    main { max-width: 1300px; margin: 0 auto; padding: 2rem; }
+
+    /* ── Summary cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.2rem 1.5rem;
+    }
+    .card-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .card-value { font-size: 2rem; font-weight: 700; margin-top: 0.3rem; }
+    .card-value.green { color: var(--green); }
+    .card-value.red   { color: var(--red); }
+    .card-value.blue  { color: var(--accent); }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+    input[type="text"] {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.45rem 0.9rem;
+      font-size: 0.9rem;
+      outline: none;
+      width: 220px;
+    }
+    input[type="text"]:focus { border-color: var(--accent); }
+
+    select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.45rem 0.9rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    .filter-btns { display: flex; gap: 0.4rem; }
+    .btn {
+      padding: 0.4rem 0.9rem;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--text); }
+    .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    thead { background: var(--surface); }
+    th {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    th:hover { color: var(--text); }
+    th .sort-arrow { margin-left: 4px; opacity: 0.4; }
+    th.sorted .sort-arrow { opacity: 1; }
+
+    tbody tr {
+      border-top: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    tbody tr:hover { background: rgba(59,130,246,0.06); }
+
+    td { padding: 0.7rem 1rem; white-space: nowrap; }
+    td.name-cell { font-weight: 600; }
+    td.team-cell { color: var(--muted); font-size: 0.8rem; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .badge.UNDERPAID { background: rgba(34,197,94,0.15);  color: var(--green); }
+    .badge.FAIR      { background: rgba(100,116,139,0.2); color: var(--muted); }
+    .badge.OVERPAID  { background: rgba(239,68,68,0.15);  color: var(--red);   }
+
+    /* ── Expandable detail row ── */
+    .detail-row td {
+      padding: 0;
+      background: rgba(59,130,246,0.04);
+    }
+    .detail-inner {
+      padding: 1rem 1.5rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 0.75rem;
+    }
+    .stat-block { }
+    .stat-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
+    .stat-val   { font-size: 1.1rem; font-weight: 600; margin-top: 2px; }
+
+    /* ── Loading / error ── */
+    #status { text-align: center; padding: 3rem; color: var(--muted); }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      main { padding: 1rem; }
+      .controls { flex-direction: column; align-items: flex-start; }
+      input[type="text"] { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="logo">CourtValue</span>
+  <nav>
+    <a href="index.html" class="active">Players</a>
+    <a href="teams.html">Teams</a>
+  </nav>
+</header>
+
+<main>
+  <!-- Summary cards -->
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Players Analyzed</div>
+      <div class="card-value blue" id="total">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Underpaid</div>
+      <div class="card-value green" id="underpaid">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Fair Value</div>
+      <div class="card-value" id="fair">—</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Overpaid</div>
+      <div class="card-value red" id="overpaid">—</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="controls">
+    <input type="text" id="search" placeholder="Search player..." />
+
+    <div class="filter-btns" id="verdict-btns">
+      <button class="btn active" data-verdict="">All</button>
+      <button class="btn" data-verdict="UNDERPAID">Underpaid</button>
+      <button class="btn" data-verdict="FAIR">Fair</button>
+      <button class="btn" data-verdict="OVERPAID">Overpaid</button>
+    </div>
+
+    <select id="hg-filter">
+      <option value="">All Positions</option>
+      <option>Guard</option>
+      <option>Wing</option>
+      <option>Forward</option>
+      <option>Big</option>
+    </select>
+
+    <select id="tier-filter">
+      <option value="">All Tiers</option>
+      <option>Minimum</option>
+      <option>Role Player</option>
+      <option>Starter</option>
+      <option>Star</option>
+      <option>Max</option>
+    </select>
+  </div>
+
+  <!-- Table -->
+  <div id="status">Loading data…</div>
+  <div class="table-wrap" id="table-wrap" style="display:none">
+    <table>
+      <thead>
+        <tr>
+          <th data-col="name">Player <span class="sort-arrow">↕</span></th>
+          <th data-col="team">Team <span class="sort-arrow">↕</span></th>
+          <th data-col="hg">Position <span class="sort-arrow">↕</span></th>
+          <th data-col="salary">Salary ($M) <span class="sort-arrow">↕</span></th>
+          <th data-col="tier">Tier <span class="sort-arrow">↕</span></th>
+          <th data-col="score">Score <span class="sort-arrow">↕</span></th>
+          <th data-col="vpd">Value/$ <span class="sort-arrow">↕</span></th>
+          <th data-col="peer_rank">Peer Rank <span class="sort-arrow">↕</span></th>
+          <th data-col="verdict">Verdict <span class="sort-arrow">↕</span></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+  const API = 'http://localhost:8000';
+  let allPlayers = [];
+  let sortCol = 'vpd';
+  let sortDir = -1; // -1 = desc
+  let activeVerdict = '';
+
+  async function load() {
+    try {
+      const [summary, players] = await Promise.all([
+        fetch(`${API}/api/stats/summary`).then(r => r.json()),
+        fetch(`${API}/api/players`).then(r => r.json()),
+      ]);
+
+      document.getElementById('total').textContent     = summary.total_players;
+      document.getElementById('underpaid').textContent = summary.underpaid_count;
+      document.getElementById('fair').textContent      = summary.fair_count;
+      document.getElementById('overpaid').textContent  = summary.overpaid_count;
+
+      allPlayers = players;
+      document.getElementById('status').style.display = 'none';
+      document.getElementById('table-wrap').style.display = '';
+      render();
+    } catch (e) {
+      document.getElementById('status').textContent =
+        '⚠ Could not reach API. Make sure the server is running: uvicorn api:app --reload --port 8000';
+    }
+  }
+
+  function filtered() {
+    const q       = document.getElementById('search').value.toLowerCase();
+    const hg      = document.getElementById('hg-filter').value;
+    const tier    = document.getElementById('tier-filter').value;
+
+    return allPlayers.filter(p => {
+      if (activeVerdict && p.verdict !== activeVerdict) return false;
+      if (hg   && p.hg   !== hg)   return false;
+      if (tier && p.tier !== tier)  return false;
+      if (q    && !(p.name||'').toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }
+
+  function render() {
+    const data = filtered().sort((a, b) => {
+      const av = a[sortCol] ?? 0, bv = b[sortCol] ?? 0;
+      if (typeof av === 'string') return sortDir * av.localeCompare(bv);
+      return sortDir * (av - bv);
+    });
+
+    // Update sort arrows
+    document.querySelectorAll('th').forEach(th => {
+      th.classList.toggle('sorted', th.dataset.col === sortCol);
+      const arrow = th.querySelector('.sort-arrow');
+      if (arrow) arrow.textContent = th.dataset.col === sortCol ? (sortDir === -1 ? '↓' : '↑') : '↕';
+    });
+
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+
+    data.forEach(p => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="name-cell">${esc(p.name)}</td>
+        <td class="team-cell">${esc(p.team||'—')}</td>
+        <td>${esc(p.hg)}</td>
+        <td>$${(+p.salary||0).toFixed(1)}M</td>
+        <td>${esc(p.tier)}</td>
+        <td>${(+p.score||0).toFixed(1)}</td>
+        <td>${(+p.vpd||0).toFixed(2)}</td>
+        <td>#${p.peer_rank}</td>
+        <td><span class="badge ${p.verdict}">${p.verdict}</span></td>
+      `;
+
+      // Expand / collapse detail row
+      const detail = document.createElement('tr');
+      detail.className = 'detail-row';
+      detail.style.display = 'none';
+      detail.innerHTML = `<td colspan="9"><div class="detail-inner">
+        ${statBlock('VORP*', p.vorp)}
+        ${statBlock('OBPM*', p.obpm)}
+        ${statBlock('DBPM*', p.dbpm)}
+        ${statBlock('TS%', p.ts != null ? (p.ts*100).toFixed(1)+'%' : '—')}
+        ${statBlock('TOV%', p.tov != null ? (p.tov).toFixed(1)+'%' : '—')}
+        ${statBlock('Games', p.games)}
+        ${statBlock('Win Shares', (p.ows||0)+(p.dws||0) > 0 ? ((p.ows||0)+(p.dws||0)).toFixed(1) : '—')}
+        ${statBlock('Height', p.height||'—')}
+        ${statBlock('Composite', p.score)}
+      </div><p style="font-size:0.7rem;color:#64748b;padding:0 1.5rem 0.75rem">
+        * Estimated metrics from NBA.com (proxy for VORP/BPM — will upgrade with API key)
+      </p></td>`;
+
+      tr.addEventListener('click', () => {
+        detail.style.display = detail.style.display === 'none' ? '' : 'none';
+      });
+
+      tbody.appendChild(tr);
+      tbody.appendChild(detail);
+    });
+  }
+
+  function statBlock(label, val) {
+    return `<div class="stat-block">
+      <div class="stat-label">${label}</div>
+      <div class="stat-val">${val ?? '—'}</div>
+    </div>`;
+  }
+
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // Sort
+  document.querySelectorAll('th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      if (sortCol === th.dataset.col) sortDir *= -1;
+      else { sortCol = th.dataset.col; sortDir = -1; }
+      render();
+    });
+  });
+
+  // Verdict filter buttons
+  document.getElementById('verdict-btns').addEventListener('click', e => {
+    const btn = e.target.closest('[data-verdict]');
+    if (!btn) return;
+    activeVerdict = btn.dataset.verdict;
+    document.querySelectorAll('#verdict-btns .btn').forEach(b => b.classList.toggle('active', b === btn));
+    render();
+  });
+
+  // Search + dropdowns
+  document.getElementById('search').addEventListener('input', render);
+  document.getElementById('hg-filter').addEventListener('change', render);
+  document.getElementById('tier-filter').addEventListener('change', render);
+
+  load();
+</script>
+</body>
+</html>

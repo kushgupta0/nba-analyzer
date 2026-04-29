@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CourtValue — Teams</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f172a; --surface: #1e293b; --border: #334155;
+      --text: #f1f5f9; --muted: #94a3b8; --accent: #3b82f6;
+      --green: #22c55e; --red: #ef4444;
+    }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100vh; }
+
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; height: 60px;
+    }
+    .logo { font-size: 1.3rem; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+    nav a { color: var(--muted); text-decoration: none; margin-left: 1.5rem; font-size: 0.9rem; }
+    nav a:hover, nav a.active { color: var(--text); }
+
+    main { max-width: 1300px; margin: 0 auto; padding: 2rem; }
+
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .sub { color: var(--muted); margin-bottom: 2rem; font-size: 0.9rem; }
+
+    .team-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .team-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+    }
+    .team-name { font-size: 1rem; font-weight: 700; margin-bottom: 0.75rem; }
+    .team-stats { display: flex; gap: 1rem; font-size: 0.82rem; color: var(--muted); }
+    .team-stat strong { color: var(--text); display: block; font-size: 1.1rem; font-weight: 700; }
+
+    .badge {
+      display: inline-block; padding: 0.15rem 0.5rem; border-radius: 20px;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    }
+    .badge.UNDERPAID { background: rgba(34,197,94,0.15); color: var(--green); }
+    .badge.FAIR      { background: rgba(100,116,139,0.2); color: var(--muted); }
+    .badge.OVERPAID  { background: rgba(239,68,68,0.15);  color: var(--red); }
+
+    .players-list { margin-top: 0.75rem; border-top: 1px solid var(--border); padding-top: 0.75rem; }
+    .player-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.3rem 0; font-size: 0.83rem;
+    }
+    .player-row:not(:last-child) { border-bottom: 1px solid rgba(51,65,85,0.5); }
+
+    #status { text-align: center; padding: 3rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="logo">CourtValue</span>
+  <nav>
+    <a href="index.html">Players</a>
+    <a href="teams.html" class="active">Teams</a>
+  </nav>
+</header>
+
+<main>
+  <h1>Team Breakdown</h1>
+  <p class="sub">Contract value aggregated by team. Click a card to see the full roster.</p>
+
+  <div id="status">Loading…</div>
+  <div class="team-grid" id="grid"></div>
+</main>
+
+<script>
+  const API = 'http://localhost:8000';
+
+  async function load() {
+    try {
+      const players = await fetch(`${API}/api/players`).then(r => r.json());
+
+      // Group by team
+      const teams = {};
+      players.forEach(p => {
+        const t = p.team || 'N/A';
+        if (!teams[t]) teams[t] = [];
+        teams[t].push(p);
+      });
+
+      document.getElementById('status').style.display = 'none';
+      const grid = document.getElementById('grid');
+
+      Object.entries(teams)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .forEach(([teamAbbr, roster]) => {
+          roster.sort((a, b) => (b.vpd || 0) - (a.vpd || 0));
+
+          const under = roster.filter(p => p.verdict === 'UNDERPAID').length;
+          const fair  = roster.filter(p => p.verdict === 'FAIR').length;
+          const over  = roster.filter(p => p.verdict === 'OVERPAID').length;
+          const avgSal = (roster.reduce((s, p) => s + (p.salary || 0), 0) / roster.length).toFixed(1);
+          const avgScore = (roster.reduce((s, p) => s + (p.score || 0), 0) / roster.length).toFixed(1);
+
+          const card = document.createElement('div');
+          card.className = 'team-card';
+          card.innerHTML = `
+            <div class="team-name">${esc(teamAbbr)}</div>
+            <div class="team-stats">
+              <div><strong>${roster.length}</strong> Players</div>
+              <div><strong>$${avgSal}M</strong> Avg Salary</div>
+              <div><strong>${avgScore}</strong> Avg Score</div>
+            </div>
+            <div class="team-stats" style="margin-top:0.5rem; gap:0.5rem">
+              <span class="badge UNDERPAID">${under} Under</span>
+              <span class="badge FAIR">${fair} Fair</span>
+              <span class="badge OVERPAID">${over} Over</span>
+            </div>
+            <div class="players-list">
+              ${roster.slice(0, 5).map(p => `
+                <div class="player-row">
+                  <span>${esc(p.name)}</span>
+                  <span>
+                    <span style="color:#94a3b8;font-size:0.78rem">${(+p.vpd||0).toFixed(2)} vpd &nbsp;</span>
+                    <span class="badge ${p.verdict}">${p.verdict}</span>
+                  </span>
+                </div>`).join('')}
+              ${roster.length > 5 ? `<div style="color:#64748b;font-size:0.78rem;padding-top:0.4rem">+${roster.length - 5} more</div>` : ''}
+            </div>`;
+          grid.appendChild(card);
+        });
+    } catch (e) {
+      document.getElementById('status').textContent =
+        '⚠ Could not reach API. Make sure the server is running: uvicorn api:app --reload --port 8000';
+    }
+  }
+
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  load();
+</script>
+</body>
+</html>
