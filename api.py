@@ -33,11 +33,23 @@ DATA_DIR = BASE_DIR
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _latest_json() -> Optional[List[Dict[str, Any]]]:
+    """Prefer a fresh timestamped run, fall back to the committed snapshot.
+
+    Timestamped outputs are gitignored, so a deployed instance has none
+    until someone triggers a refresh. latest.json is committed so the
+    site serves data on a cold start.
+    """
     files = sorted(glob.glob(str(DATA_DIR / "nba_contracts_*.json")), reverse=True)
-    if not files:
-        return None
-    with open(files[0]) as f:
-        return json.load(f)
+    if files:
+        with open(files[0]) as f:
+            return json.load(f)
+
+    snapshot = DATA_DIR / "latest.json"
+    if snapshot.exists():
+        with open(snapshot) as f:
+            return json.load(f)
+
+    return None
 
 
 def _refresh_data(season: int):

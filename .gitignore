@@ -17,4 +17,6 @@ venv/
 
 # Outputs
 nba_contracts_*.json
+# latest.json is committed so the deployed API has data on cold start
+!latest.json
 
