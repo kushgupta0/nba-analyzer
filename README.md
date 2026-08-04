@@ -49,3 +49,10 @@ curl -X POST "http://localhost:8000/api/refresh?season=2024"
 - **Salaries**: HoopsHype is a Next.js app and may only embed a subset of salary records. If you want full coverage, replace the salary pull with a dedicated salary API.
 - **Optional API key**: Copy `.env.example` → `.env` if you later wire a paid provider (not required for the current pipeline).
 
+
+## Coverage limitation
+
+Analysis covers 182 of 582 active players. The constraint is the salary
+dataset (217 contracts), which skews toward higher-paid players.
+Minimum-salary and two-way contracts are underrepresented, which matters
+because that group is where underpaid players concentrate.
