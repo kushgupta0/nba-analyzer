@@ -15,7 +15,7 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from fetcher import fetch_player_data
+from fetcher import fetch_player_data, CURRENT_SEASON
 from analyzer import run_pipeline
 
 app = FastAPI(title="NBA Contract Value API", version="1.0.0")
@@ -103,7 +103,7 @@ def get_summary():
 
 
 @app.post("/api/refresh")
-def refresh(background_tasks: BackgroundTasks, season: int = 2024):
+def refresh(background_tasks: BackgroundTasks, season: int = CURRENT_SEASON):
     """Trigger a fresh data pull + analysis in the background."""
     background_tasks.add_task(_refresh_data, season)
     return {"status": "refresh started", "season": season}

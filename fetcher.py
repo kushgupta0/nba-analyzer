@@ -14,6 +14,11 @@ from nba_api.stats.endpoints import (
 
 # ── Salary sources ───────────────────────────────────────────────────────────
 
+# Season is the ending year, matching Basketball-Reference URLs:
+# 2026 means the 2025-26 season. Defined once so the annual update
+# is a single edit rather than five.
+CURRENT_SEASON = 2026
+
 BASE_DIR = Path(__file__).resolve().parent
 SALARY_CSV = BASE_DIR / "salaries_2026.csv"
 
@@ -53,7 +58,7 @@ def load_salary_data_from_csv(csv_path: Path = SALARY_CSV) -> Dict[str, float]:
     return salary_map
 
 
-def fetch_salary_data_from_hoopshype(season: int = 2024) -> Dict[str, float]:
+def fetch_salary_data_from_hoopshype(season: int = CURRENT_SEASON) -> Dict[str, float]:
     """
     Scrape current-season salary data from HoopsHype.
     Returns a dict keyed by lowercase player name → annual salary (USD).
@@ -154,7 +159,7 @@ def _match_salary(name: str, salary_map: Dict[str, float]) -> Optional[float]:
     return _match_by_name(name, salary_map)
 
 
-def fetch_win_shares_data(season: int = 2024) -> Dict[str, Dict[str, float]]:
+def fetch_win_shares_data(season: int = CURRENT_SEASON) -> Dict[str, Dict[str, float]]:
     """
     Scrape Basketball-Reference advanced table for PER, OWS, and DWS.
     Returns: {normalized_player_name: {"per": x, "ows": y, "dws": z}}
@@ -238,7 +243,7 @@ def _pull(endpoint_cls, season_str: str, delay: float = 0.7, **kwargs) -> Option
         return None
 
 
-def fetch_player_data(season: int = 2024) -> Optional[pd.DataFrame]:
+def fetch_player_data(season: int = CURRENT_SEASON) -> Optional[pd.DataFrame]:
     season_str = f"{season - 1}-{str(season)[-2:]}"
     print(f"\nFetching data for {season_str} season...")
 
