@@ -213,8 +213,12 @@ def fetch_win_shares_data(season: int = 2024) -> Dict[str, Dict[str, float]]:
             if per is None or ows is None or dws is None:
                 continue
 
-            # Prefer the TOTAL row for traded players.
-            if key not in ws_map or team_id == "TOT":
+            # Prefer the combined-season row for traded players.
+            # Basketball-Reference replaced the old "TOT" label with
+            # "2TM", "3TM", and so on. Matching only "TOT" silently
+            # left traded players on a partial-season row.
+            is_multi_team = bool(re.fullmatch(r"\d+TM", team_id)) or team_id == "TOT"
+            if key not in ws_map or is_multi_team:
                 ws_map[key] = {"per": per, "ows": ows, "dws": dws}
 
     except Exception as e:
