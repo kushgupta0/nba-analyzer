@@ -161,8 +161,8 @@ def _match_salary(name: str, salary_map: Dict[str, float]) -> Optional[float]:
 
 def fetch_win_shares_data(season: int = CURRENT_SEASON) -> Dict[str, Dict[str, float]]:
     """
-    Scrape Basketball-Reference advanced table for PER, OWS, and DWS.
-    Returns: {normalized_player_name: {"per": x, "ows": y, "dws": z}}
+    Scrape Basketball-Reference advanced table.
+    Returns per-player PER, OWS, DWS, BPM, WS/48, usage rate, and age.
     """
     url = f"https://www.basketball-reference.com/leagues/NBA_{season}_advanced.html"
     headers = {"User-Agent": "Mozilla/5.0 (compatible; nba-analyzer/1.0)"}
@@ -218,13 +218,28 @@ def fetch_win_shares_data(season: int = CURRENT_SEASON) -> Dict[str, Dict[str, f
             if per is None or ows is None or dws is None:
                 continue
 
+            # Rate-based metrics. PER and win shares both scale with
+            # minutes and usage, so a high-efficiency role player is
+            # systematically undervalued by them. BPM is per-100
+            # possessions and WS/48 is per-minute.
+            bpm = parse_stat("bpm")
+            ws48 = parse_stat("ws_per_48")
+            usg = parse_stat("usg_pct")
+            age = parse_stat("age")
+
             # Prefer the combined-season row for traded players.
             # Basketball-Reference replaced the old "TOT" label with
             # "2TM", "3TM", and so on. Matching only "TOT" silently
             # left traded players on a partial-season row.
             is_multi_team = bool(re.fullmatch(r"\d+TM", team_id)) or team_id == "TOT"
             if key not in ws_map or is_multi_team:
-                ws_map[key] = {"per": per, "ows": ows, "dws": dws}
+                ws_map[key] = {
+                    "per": per, "ows": ows, "dws": dws,
+                    "bpm": bpm if bpm is not None else 0.0,
+                    "ws48": ws48 if ws48 is not None else 0.0,
+                    "usg": usg if usg is not None else 0.0,
+                    "age": age if age is not None else 0.0,
+                }
 
     except Exception as e:
         print(f"    ✗ Basketball-Reference scrape failed: {e}")

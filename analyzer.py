@@ -156,6 +156,18 @@ def calculate_scores(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# Verdicts require enough comparable players for a rank to mean
+# anything. Below this, the listing is reported without a verdict.
+MIN_PEER_GROUP = 5
+
+# Verdicts require enough comparable players for a rank to mean
+# anything. Below this, the listing is reported without a verdict.
+MIN_PEER_GROUP = 5
+
+# Verdicts require enough comparable players for a rank to mean
+# anything. Below this, the listing is reported without a verdict.
+MIN_PEER_GROUP = 5
+
 # ── Step 7: Peer rankings ────────────────────────────────────────────────────
 
 def calculate_peer_rankings(df: pd.DataFrame) -> pd.DataFrame:
@@ -180,7 +192,21 @@ def assign_verdicts(df: pd.DataFrame) -> pd.DataFrame:
             (df["salary_tier"]  == row["salary_tier"])
         ]
         peer_count = len(peers)
-        percentile = row["peer_rank"] / peer_count
+
+        # Percentile must map the best peer to 0.0 and the worst to
+        # 1.0. Dividing rank by count instead put the best player at
+        # 1/n, which meant nobody in a group of three or fewer could
+        # ever be UNDERPAID, and a player alone in a group scored 1.0
+        # and was labeled OVERPAID regardless of performance.
+        if peer_count < MIN_PEER_GROUP:
+            return pd.Series([
+                "INSUFFICIENT PEERS",
+                f"Only {peer_count} player(s) in the "
+                f"{row['height_group']} / {row['salary_tier']} group. "
+                f"Too few comparables to rank against.",
+            ])
+
+        percentile = (row["peer_rank"] - 1) / (peer_count - 1)
 
         base = (
             f"Rank {int(row['peer_rank'])} of {peer_count} in "
@@ -209,6 +235,9 @@ def assign_verdicts(df: pd.DataFrame) -> pd.DataFrame:
     print(f"    - UNDERPAID: {counts.get('UNDERPAID', 0)}")
     print(f"    - FAIR:      {counts.get('FAIR', 0)}")
     print(f"    - OVERPAID:  {counts.get('OVERPAID', 0)}")
+    if counts.get("INSUFFICIENT PEERS", 0):
+        print(f"    - NO VERDICT: {counts.get('INSUFFICIENT PEERS', 0)} "
+              f"(peer group under {MIN_PEER_GROUP})")
     return df
 
 
